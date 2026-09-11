@@ -144,7 +144,7 @@ export function setupHandlers(bot: Bot, env: Env): void {
       
       // Check if user is admin
       if (ctx.from) {
-        const isBotAdmin = env.ADMIN_IDS.split(',').map(Number).includes(ctx.from.id);
+        const isBotAdmin = (env.ADMIN_IDS || '').split(',').map(Number).filter(Boolean).includes(ctx.from.id);
         if (isBotAdmin) return false;
         
         try {
