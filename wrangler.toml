@@ -16,7 +16,7 @@ database_id = "ebc06334-07d0-439f-ae13-86ae9a2c07cb"
 
 # KV Namespace for caching
 [[kv_namespaces]]
-binding = "tg-bot-cache"
+binding = "CACHE"
 id = "572c963044394146bcc1f8540721ad46"
 
 # Cron Triggers for scheduled tasks
