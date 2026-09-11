@@ -12,12 +12,12 @@ ADMIN_IDS = "123456789,987654321"  # Comma-separated Telegram user IDs
 [[d1_databases]]
 binding = "DB"
 database_name = "tg-bot-db"
-database_id = "fbac1ae2-f496-4448-88b6-ec37c8826f23"
+database_id = "ebc06334-07d0-439f-ae13-86ae9a2c07cb"
 
 # KV Namespace for caching
 [[kv_namespaces]]
-binding = "CACHE"
-id = "e4f45dccc7884da9aca62f37ba7bf484"
+binding = "tg-bot-cache"
+id = "572c963044394146bcc1f8540721ad46"
 
 # Cron Triggers for scheduled tasks
 [triggers]
