@@ -325,9 +325,17 @@ export async function handleDashboard(request: Request, env: Env): Promise<Respo
     }
     
     if (request.method === 'POST') {
-      const config = await request.json();
-      await env.CACHE.put('bot_config', JSON.stringify(config));
-      return new Response(JSON.stringify({ message: '配置保存成功！' }), { headers: { 'Content-Type': 'application/json' } });
+      try {
+        if (!env.CACHE) {
+          return new Response(JSON.stringify({ error: 'KV 绑定 (CACHE) 未配置！请在 Cloudflare 控制台添加 KV 绑定' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        }
+        const config = await request.json();
+        await env.CACHE.put('bot_config', JSON.stringify(config));
+        return new Response(JSON.stringify({ message: '配置保存成功！' }), { headers: { 'Content-Type': 'application/json' } });
+      } catch (error: any) {
+        console.error('Save config error:', error);
+        return new Response(JSON.stringify({ error: `保存失败: ${error?.message || error}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
     }
   }
   
