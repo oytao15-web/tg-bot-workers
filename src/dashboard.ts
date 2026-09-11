@@ -505,7 +505,11 @@ export async function handleDashboard(request: Request, env: Env): Promise<Respo
         if (!env.DB) {
           return new Response(JSON.stringify({ error: 'D1 绑定 (DB) 未配置！请在 Cloudflare 控制台添加 D1 绑定' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
         }
-        await env.DB.exec(INIT_DB_SQL);
+        // D1 exec() fails on multi-statement SQL, so run each statement individually
+        const statements = INIT_DB_SQL.split(';').map(s => s.trim()).filter(Boolean);
+        for (const sql of statements) {
+          await env.DB.prepare(sql).run();
+        }
         return new Response(JSON.stringify({ message: '数据库初始化成功！所有表已创建。' }), { headers: { 'Content-Type': 'application/json' } });
       } catch (error: any) {
         console.error('Init DB error:', error);
