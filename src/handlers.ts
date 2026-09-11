@@ -6,6 +6,17 @@
 import { Bot, Context } from 'grammy';
 import { Env } from './types';
 
+// Read global config from KV (set via dashboard)
+async function getGlobalConfig(env: Env): Promise<any> {
+  try {
+    const stored = await env.CACHE.get('bot_config');
+    if (stored) return JSON.parse(stored);
+  } catch (e) {
+    console.error('Failed to read global config:', e);
+  }
+  return {};
+}
+
 export function setupHandlers(bot: Bot, env: Env): void {
   
   // === New Member Handler ===
@@ -22,6 +33,10 @@ export function setupHandlers(bot: Bot, env: Env): void {
       SELECT welcome_message FROM groups WHERE id = ?
     `).bind(groupId).first<{ welcome_message: string | null }>();
     
+    // Get global config from dashboard
+    const globalConfig = await getGlobalConfig(env);
+    const globalWelcome = globalConfig.welcome_message;
+    
     for (const member of newMembers) {
       // Skip bots
       if (member.is_bot) continue;
@@ -37,9 +52,11 @@ export function setupHandlers(bot: Bot, env: Env): void {
         INSERT OR IGNORE INTO group_members (group_id, user_id) VALUES (?, ?)
       `).bind(groupId, member.id).run();
       
-      // Send welcome message
-      if (group?.welcome_message) {
-        const welcomeText = group.welcome_message
+      // Send welcome message - group-specific first, then global config, then default
+      let welcomeText = group?.welcome_message || globalWelcome || '';
+      
+      if (welcomeText) {
+        welcomeText = welcomeText
           .replace('{first_name}', member.first_name)
           .replace('{last_name}', member.last_name || '')
           .replace('{username}', member.username ? `@${member.username}` : member.first_name)
