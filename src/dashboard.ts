@@ -25,6 +25,139 @@ const defaultConfig: BotConfig = {
   announcement_footer: '\n\n— 管理员',
 };
 
+// D1 schema initialization SQL (idempotent, safe to run multiple times)
+const INIT_DB_SQL = `
+CREATE TABLE IF NOT EXISTS groups (
+    id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    username TEXT,
+    description TEXT,
+    invite_link TEXT,
+    language TEXT DEFAULT 'zh',
+    welcome_message TEXT,
+    rules TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    username TEXT,
+    first_name TEXT NOT NULL,
+    last_name TEXT,
+    language_code TEXT DEFAULT 'zh',
+    reputation INTEGER DEFAULT 0,
+    warning_count INTEGER DEFAULT 0,
+    is_banned INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS group_members (
+    group_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    role TEXT DEFAULT 'member',
+    joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (group_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS warnings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    admin_id INTEGER NOT NULL,
+    reason TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    keyword TEXT NOT NULL,
+    content TEXT NOT NULL,
+    file_id TEXT,
+    file_type TEXT,
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS filters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    keyword TEXT NOT NULL,
+    response TEXT NOT NULL,
+    is_regex INTEGER DEFAULT 0,
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS group_locks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    lock_type TEXT NOT NULL,
+    is_locked INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS action_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    details TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS invite_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    link TEXT NOT NULL UNIQUE,
+    name TEXT,
+    created_by INTEGER NOT NULL,
+    max_uses INTEGER DEFAULT 0,
+    current_uses INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS invite_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invite_link_id INTEGER NOT NULL,
+    invited_user_id INTEGER NOT NULL,
+    joined_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    file_id TEXT,
+    file_type TEXT,
+    created_by INTEGER NOT NULL,
+    is_pinned INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS scheduled_announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    scheduled_time DATETIME NOT NULL,
+    is_sent INTEGER DEFAULT 0,
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS announcement_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS antiflood_settings (
+    group_id INTEGER PRIMARY KEY,
+    max_messages INTEGER DEFAULT 5,
+    time_window INTEGER DEFAULT 10,
+    action TEXT DEFAULT 'mute'
+);
+CREATE INDEX IF NOT EXISTS idx_warnings_group ON warnings(group_id);
+CREATE INDEX IF NOT EXISTS idx_notes_group_keyword ON notes(group_id, keyword);
+CREATE INDEX IF NOT EXISTS idx_filters_group ON filters(group_id);
+CREATE INDEX IF NOT EXISTS idx_action_logs_group ON action_logs(group_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_time ON scheduled_announcements(scheduled_time, is_sent);
+CREATE INDEX IF NOT EXISTS idx_invite_link ON invite_links(link);
+`;
+
 // HTML for the dashboard
 function getDashboardHTML(config: BotConfig, stats: any): string {
   return `<!DOCTYPE html>
@@ -154,6 +287,16 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
       <button class="btn btn-secondary" onclick="registerWebhook()">🚀 注册 Webhook</button>
       <div class="help-text" style="margin-top: 10px;">点击上方按钮自动设置 Telegram Webhook</div>
     </div>
+
+    <!-- Database Card -->
+    <div class="card">
+      <h2>🗄️ 数据库</h2>
+      <div class="form-group">
+        <label>D1 数据库初始化</label>
+        <button class="btn btn-secondary" onclick="initDb()">🗄️ 一键初始化数据库</button>
+        <div class="help-text" style="margin-top: 10px;">首次使用前必须执行。如果机器人提示 "no such table"，点这里即可自动建表（重复执行安全）。</div>
+      </div>
+    </div>
   </div>
   
   <script>
@@ -202,6 +345,17 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
         showAlert(text, res.ok ? 'success' : 'error');
       } catch (err) {
         showAlert('注册失败: ' + err.message, 'error');
+      }
+    }
+
+    // Init database
+    async function initDb() {
+      try {
+        const res = await fetch('/api/init-db', { method: 'POST' });
+        const result = await res.json();
+        showAlert(result.message || result.error || '初始化完成', res.ok ? 'success' : 'error');
+      } catch (err) {
+        showAlert('初始化失败: ' + err.message, 'error');
       }
     }
   </script>
@@ -335,6 +489,27 @@ export async function handleDashboard(request: Request, env: Env): Promise<Respo
       } catch (error: any) {
         console.error('Save config error:', error);
         return new Response(JSON.stringify({ error: `保存失败: ${error?.message || error}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+  }
+  
+  // Init database tables
+  if (url.pathname === '/api/init-db') {
+    const cookie = request.headers.get('Cookie') || '';
+    if (!cookie.includes('auth=logged')) {
+      return new Response(JSON.stringify({ error: '未登录' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+    
+    if (request.method === 'POST') {
+      try {
+        if (!env.DB) {
+          return new Response(JSON.stringify({ error: 'D1 绑定 (DB) 未配置！请在 Cloudflare 控制台添加 D1 绑定' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        }
+        await env.DB.exec(INIT_DB_SQL);
+        return new Response(JSON.stringify({ message: '数据库初始化成功！所有表已创建。' }), { headers: { 'Content-Type': 'application/json' } });
+      } catch (error: any) {
+        console.error('Init DB error:', error);
+        return new Response(JSON.stringify({ error: `初始化失败: ${error?.message || error}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
       }
     }
   }
