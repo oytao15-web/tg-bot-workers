@@ -54,7 +54,10 @@ export default {
       const res = await fetch(`https://api.telegram.org/bot${config.token}/setWebhook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: webhookUrl }),
+        body: JSON.stringify({
+          url: webhookUrl,
+          allowed_updates: ['message', 'edited_message', 'channel_post', 'callback_query', 'chat_member', 'my_chat_member'],
+        }),
       });
       const data = (await res.json()) as { ok: boolean; description?: string };
       if (data.ok) {
