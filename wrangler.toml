@@ -1,0 +1,24 @@
+name = "tg-bot-workers"
+main = "src/index.ts"
+compatibility_date = "2024-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Environment variables (use `wrangler secret put` for sensitive values)
+[vars]
+BOT_USERNAME = "YourBotUsername"
+ADMIN_IDS = "123456789,987654321"  # Comma-separated Telegram user IDs
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "tg-bot-db"
+database_id = "your-d1-database-id-here"
+
+# KV Namespace for caching
+[[kv_namespaces]]
+binding = "CACHE"
+id = "your-kv-namespace-id-here"
+
+# Cron Triggers for scheduled tasks
+[triggers]
+crons = ["*/5 * * * *"]  # Every 5 minutes for scheduled announcements
