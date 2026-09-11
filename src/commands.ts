@@ -4,7 +4,7 @@
 
 import { Bot, Context } from 'grammy';
 import { Env } from './types';
-import { isAdmin, isGroupAdmin } from './utils';
+import { isGroupAdmin } from './utils';
 
 export function setupCommands(bot: Bot, env: Env): void {
   
@@ -160,12 +160,11 @@ export function setupCommands(bot: Bot, env: Env): void {
     try {
       const untilDate = Math.floor(Date.now() / 1000) + duration;
       await ctx.restrictChatMember(targetUser.id, {
+        can_send_messages: false,
+        can_send_other_messages: false,
+        can_add_web_page_previews: false,
+      }, {
         until_date: untilDate,
-        permissions: {
-          can_send_messages: false,
-          can_send_other_messages: false,
-          can_add_web_page_previews: false,
-        }
       });
       
       const durationText = formatDuration(duration);
@@ -201,14 +200,14 @@ export function setupCommands(bot: Bot, env: Env): void {
       SELECT COUNT(*) as count FROM warnings WHERE group_id = ? AND user_id = ?
     `).bind(groupId, targetUser.id).first<{ count: number }>();
     
-    const warnCount = result?.count || 1;
+    const warnCount = Number(result?.count) || 1;
     const maxWarnings = 3;
     
     await ctx.reply(
       `⚠️ <b>警告 #${warnCount}</b>\n` +
       `用户: ${targetUser.first_name}\n` +
       `原因: ${reason}\n\n` +
-      warnCount >= maxWarnings ? `🚫 已达到最大警告次数，自动封禁。` : `剩余次数: ${maxWarnings - warnCount}`,
+      (warnCount >= maxWarnings ? `🚫 已达到最大警告次数，自动封禁。` : `剩余次数: ${maxWarnings - warnCount}`),
       { parse_mode: 'HTML' }
     );
     
@@ -406,7 +405,22 @@ export function setupCommands(bot: Bot, env: Env): void {
     if (group?.rules) {
       await ctx.reply(`📜 <b>群组规则</b>\n\n${group.rules}`, { parse_mode: 'HTML' });
     } else {
-      await ctx.reply('📜 暂无群组规则。');
+      // Fall back to global config set via dashboard
+      let globalRules = '';
+      try {
+        const stored = await env.CACHE.get('bot_config');
+        if (stored) {
+          globalRules = JSON.parse(stored).group_rules || '';
+        }
+      } catch (e) {
+        console.error('Failed to read global rules:', e);
+      }
+      
+      if (globalRules) {
+        await ctx.reply(`📜 <b>群组规则</b>\n\n${globalRules}`, { parse_mode: 'HTML' });
+      } else {
+        await ctx.reply('📜 暂无群组规则。');
+      }
     }
   });
 
