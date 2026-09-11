@@ -82,9 +82,11 @@ CREATE TABLE IF NOT EXISTS filters (
     keyword TEXT NOT NULL,
     response TEXT NOT NULL,
     is_regex INTEGER DEFAULT 0,
+    action TEXT DEFAULT 'reply',
     created_by INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE filters ADD COLUMN action TEXT DEFAULT 'reply';
 CREATE TABLE IF NOT EXISTS group_locks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     group_id INTEGER NOT NULL,
@@ -508,7 +510,11 @@ export async function handleDashboard(request: Request, env: Env): Promise<Respo
         // D1 exec() fails on multi-statement SQL, so run each statement individually
         const statements = INIT_DB_SQL.split(';').map(s => s.trim()).filter(Boolean);
         for (const sql of statements) {
-          await env.DB.prepare(sql).run();
+          if (sql.toUpperCase().startsWith('ALTER TABLE')) {
+            try { await env.DB.prepare(sql).run(); } catch { /* column already exists */ }
+          } else {
+            await env.DB.prepare(sql).run();
+          }
         }
         return new Response(JSON.stringify({ message: '数据库初始化成功！所有表已创建。' }), { headers: { 'Content-Type': 'application/json' } });
       } catch (error: any) {

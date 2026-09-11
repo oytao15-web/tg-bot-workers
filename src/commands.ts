@@ -104,7 +104,7 @@ export function setupCommands(bot: Bot, env: Env): void {
     if (!ctx.chat || ctx.chat.type === 'private') return;
 
     const { results } = await env.DB.prepare(`
-      SELECT keyword FROM filters WHERE group_id = ? ORDER BY keyword
+      SELECT keyword, action FROM filters WHERE group_id = ? ORDER BY keyword
     `).bind(ctx.chat.id).all();
 
     if (!results || results.length === 0) {
@@ -112,8 +112,10 @@ export function setupCommands(bot: Bot, env: Env): void {
       return;
     }
 
-    const keywords = results.map((r: any) => `#${r.keyword}`).join(', ');
-    await ctx.reply(`🔍 <b>过滤器列表</b>\n\n${keywords}`, { parse_mode: 'HTML' });
+    const keywords = results.map((r: any) =>
+      r.action === 'delete' ? `#${r.keyword} 🚫` : `#${r.keyword}`
+    ).join(', ');
+    await ctx.reply(`🔍 <b>过滤器列表</b>\n\n${keywords}\n\n🚫 = 命中自动撤回`, { parse_mode: 'HTML' });
   });
 
   bot.command('info', async (ctx: Context) => {
@@ -576,19 +578,32 @@ export function setupCommands(bot: Bot, env: Env): void {
 
     const args = ctx.message?.text?.split(' ').slice(1) || [];
 
-    if (args.length < 2) {
-      await ctx.reply('❌ 用法: <code>/filter 关键词 回复内容</code>', { parse_mode: 'HTML' });
+    const keyword = args[0]?.toLowerCase();
+    if (!keyword) {
+      await ctx.reply('❌ 用法: <code>/filter 关键词 回复内容</code> 或 <code>/filter 关键词 delete</code>（撤回）', { parse_mode: 'HTML' });
       return;
     }
 
-    const keyword = args[0].toLowerCase();
-    const response = args.slice(1).join(' ');
+    const rest = args.slice(1).join(' ').trim();
+    const isDelete = ['delete', 'del'].includes(rest.toLowerCase());
+    if (!isDelete && !rest) {
+      await ctx.reply('❌ 用法: <code>/filter 关键词 回复内容</code> 或 <code>/filter 关键词 delete</code>（撤回）', { parse_mode: 'HTML' });
+      return;
+    }
+
+    const action = isDelete ? 'delete' : 'reply';
+    const response = isDelete ? '' : rest;
 
     await env.DB.prepare(`
-      INSERT INTO filters (group_id, keyword, response, created_by) VALUES (?, ?, ?, ?)
-    `).bind(groupId, keyword, response, ctx.from!.id).run();
+      INSERT INTO filters (group_id, keyword, response, action, created_by) VALUES (?, ?, ?, ?, ?)
+    `).bind(groupId, keyword, response, action, ctx.from!.id).run();
 
-    await ctx.reply(`✅ 过滤器 <b>#${keyword}</b> 已设置。`, { parse_mode: 'HTML' });
+    await ctx.reply(
+      action === 'delete'
+        ? `✅ 撤回过滤器 <b>#${keyword}</b> 已设置，命中后自动删除消息。`
+        : `✅ 自动回复 <b>#${keyword}</b> 已设置。`,
+      { parse_mode: 'HTML' }
+    );
   });
 
   bot.command('stop', async (ctx: Context) => {
@@ -790,6 +805,7 @@ function getAdminMenuText(): string {
     `⚠️ /warn 用户ID 原因 - 警告\n` +
     `📝 /note 关键词 内容 - 保存笔记\n` +
     `🔍 /filter 关键词 回复 - 自动回复\n` +
+    `🚫 /filter 关键词 delete - 命中自动撤回\n` +
     `⚙️ /setwelcome 内容 - 欢迎消息\n` +
     `📜 /setrules 内容 - 群规则\n` +
     `🔒 /lock 类型 - 锁定内容\n` +
@@ -852,6 +868,7 @@ function getHelpText(isPrivate: boolean): string {
       `/note 关键词 内容 - 保存笔记\n` +
       `/delnote 关键词 - 删除笔记\n` +
       `/filter 关键词 回复 - 自动回复\n` +
+      `/filter 关键词 delete - 命中自动撤回\n` +
       `/stop 关键词 - 删除过滤器\n\n` +
 
       `<b>设置命令:</b>\n` +

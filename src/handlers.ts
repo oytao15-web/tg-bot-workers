@@ -110,26 +110,29 @@ export function setupHandlers(bot: Bot, env: Env): void {
       
       // Check for filter match
       const { results } = await env.DB.prepare(`
-        SELECT keyword, response, is_regex FROM filters WHERE group_id = ?
+        SELECT keyword, response, is_regex, action FROM filters WHERE group_id = ?
       `).bind(groupId).all();
       
       if (results) {
         for (const filter of results as any[]) {
+          let matched = false;
           if (filter.is_regex) {
             try {
               const regex = new RegExp(filter.keyword, 'i');
-              if (regex.test(lowerText)) {
-                await ctx.reply(filter.response, { parse_mode: 'HTML' });
-                return;
-              }
+              matched = regex.test(lowerText);
             } catch (e) {
               // Invalid regex, skip
             }
           } else {
-            if (lowerText.includes(filter.keyword.toLowerCase())) {
+            matched = lowerText.includes(filter.keyword.toLowerCase());
+          }
+          if (matched) {
+            if (filter.action === 'delete') {
+              try { await ctx.deleteMessage(); } catch (e) { /* ignore */ }
+            } else {
               await ctx.reply(filter.response, { parse_mode: 'HTML' });
-              return;
             }
+            return;
           }
         }
       }
