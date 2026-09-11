@@ -266,10 +266,15 @@ function getLoginHTML(): string {
 }
 
 // Get config from KV
-async function getConfig(kv: KVNamespace): Promise<BotConfig> {
+async function getConfig(kv: KVNamespace | undefined): Promise<BotConfig> {
+  if (!kv) return { ...defaultConfig };
   const stored = await kv.get('bot_config');
   if (stored) {
-    return JSON.parse(stored);
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return { ...defaultConfig };
+    }
   }
   return { ...defaultConfig };
 }
@@ -333,7 +338,41 @@ export async function handleDashboard(request: Request, env: Env): Promise<Respo
   }
   
   // Show dashboard
-  const config = await getConfig(env.CACHE);
-  const stats = await getStats(env.DB);
-  return new Response(getDashboardHTML(config, stats), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  try {
+    const config = await getConfig(env.CACHE);
+    const stats = await getStats(env.DB);
+    return new Response(getDashboardHTML(config, stats), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  } catch (error: any) {
+    return new Response(
+      `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>配置错误</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .box { background: white; border-radius: 16px; padding: 40px; max-width: 600px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+    h1 { color: #e74c3c; font-size: 1.5em; margin-bottom: 20px; }
+    pre { background: #f1f3f5; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 0.9em; }
+    ol { color: #555; line-height: 1.8; }
+    code { background: #e9ecef; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>⚠️ 配置面板加载失败</h1>
+    <p>错误信息：</p>
+    <pre>${String(error?.message || error).replace(/</g, '&lt;')}</pre>
+    <p>常见原因及解决方法：</p>
+    <ol>
+      <li><b>KV 绑定未配置</b>：在 Cloudflare 控制台 → Workers → 你的 Worker → Settings → Bindings，确认存在 <code>CACHE</code> 绑定并关联真实的 KV 命名空间</li>
+      <li><b>D1 绑定未配置</b>：同样在 Bindings 里确认存在 <code>DB</code> 绑定并关联真实的 D1 数据库</li>
+      <li><b>D1 表未初始化</b>：在 D1 控制台执行 <code>schema.sql</code> 建表语句</li>
+    </ol>
+  </div>
+</body>
+</html>`,
+      { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    );
+  }
 }
