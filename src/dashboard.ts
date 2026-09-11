@@ -199,6 +199,9 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
     .help-text { font-size: 0.85em; color: #888; margin-top: 5px; }
     .login-container { max-width: 400px; margin: 100px auto; }
     .logo { width: 80px; height: 80px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 20px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; font-size: 2.5em; }
+    .filter-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; }
+    .btn-small { background: #e74c3c; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85em; }
+    .btn-small:hover { background: #c0392b; }
     @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: repeat(2, 1fr); } }
   </style>
 </head>
@@ -290,6 +293,36 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
       <div class="help-text" style="margin-top: 10px;">点击上方按钮自动设置 Telegram Webhook</div>
     </div>
 
+    <!-- Filters Card -->
+    <div class="card">
+      <h2>🚫 违禁词管理</h2>
+      <div class="form-group">
+        <label>选择群组</label>
+        <select id="filterGroup" class="form-group"></select>
+        <div class="help-text">选择群组后，下方显示该群的违禁词/过滤器</div>
+      </div>
+      <div id="filterList" style="margin-bottom: 20px;"></div>
+      <div class="section">
+        <div class="section-title">添加违禁词</div>
+        <div class="form-group">
+          <label>关键词</label>
+          <input type="text" id="newFilterKeyword" placeholder="如: 加微信">
+        </div>
+        <div class="form-group">
+          <label>处理方式</label>
+          <select id="newFilterAction" onchange="toggleReplyInput()">
+            <option value="delete">🚫 自动撤回（命中即删除消息）</option>
+            <option value="reply">💬 自动回复（命中即回复预设内容）</option>
+          </select>
+        </div>
+        <div class="form-group" id="replyContentGroup" style="display:none;">
+          <label>回复内容</label>
+          <input type="text" id="newFilterResponse" placeholder="匹配后自动回复的内容">
+        </div>
+        <button class="btn" onclick="addFilter()">➕ 添加违禁词</button>
+      </div>
+    </div>
+
     <!-- Database Card -->
     <div class="card">
       <h2>🗄️ 数据库</h2>
@@ -360,6 +393,124 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
         showAlert('初始化失败: ' + err.message, 'error');
       }
     }
+
+    // === Filter (违禁词) management ===
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function toggleReplyInput() {
+      const isReply = document.getElementById('newFilterAction').value === 'reply';
+      document.getElementById('replyContentGroup').style.display = isReply ? 'block' : 'none';
+    }
+
+    async function loadFilterGroups() {
+      try {
+        const res = await fetch('/api/groups');
+        if (!res.ok) {
+          const err = await res.json();
+          showAlert(err.error || '加载群组失败', 'error');
+          return;
+        }
+        const groups = await res.json();
+        const select = document.getElementById('filterGroup');
+        select.innerHTML = '';
+        if (!groups || groups.length === 0) {
+          select.innerHTML = '<option value="">暂无群组（先把机器人加入群聊）</option>';
+          document.getElementById('filterList').innerHTML = '<p style="color:#888;">暂无数据</p>';
+          return;
+        }
+        groups.forEach(g => {
+          const opt = document.createElement('option');
+          opt.value = g.id;
+          opt.textContent = g.title;
+          select.appendChild(opt);
+        });
+        select.onchange = loadFilters;
+        loadFilters();
+      } catch (err) {
+        showAlert('加载群组失败: ' + err.message, 'error');
+      }
+    }
+
+    async function loadFilters() {
+      const groupId = document.getElementById('filterGroup').value;
+      const list = document.getElementById('filterList');
+      if (!groupId) return;
+      try {
+        const res = await fetch('/api/filters?group_id=' + groupId);
+        if (!res.ok) {
+          const err = await res.json();
+          if (err.needInit) {
+            list.innerHTML = '<p style="color:#e74c3c;">⚠️ 数据库未初始化或缺少字段，请点击下方「一键初始化数据库」</p>';
+          } else {
+            list.innerHTML = '<p style="color:#e74c3c;">加载失败: ' + escapeHtml(err.error || '') + '</p>';
+          }
+          return;
+        }
+        const filters = await res.json();
+        if (!filters || filters.length === 0) {
+          list.innerHTML = '<p style="color:#888;">暂无违禁词/过滤器</p>';
+          return;
+        }
+        list.innerHTML = '<div style="font-weight:600;color:#555;margin-bottom:10px;">当前过滤器 (' + filters.length + ')</div>' +
+          filters.map(function(f) {
+            return '<div class="filter-item">' +
+              '<span>' + (f.action === 'delete' ? '🚫' : '💬') + ' <b>#' + escapeHtml(f.keyword) + '</b></span>' +
+              '<button class="btn-small" data-del-keyword="' + encodeURIComponent(f.keyword) + '">删除</button>' +
+              '</div>';
+          }).join('');
+        list.querySelectorAll('[data-del-keyword]').forEach(btn => {
+          btn.onclick = () => deleteFilter(groupId, decodeURIComponent(btn.dataset.delKeyword));
+        });
+      } catch (err) {
+        list.innerHTML = '<p style="color:#e74c3c;">加载失败: ' + escapeHtml(err.message) + '</p>';
+      }
+    }
+
+    async function addFilter() {
+      const groupId = document.getElementById('filterGroup').value;
+      const keyword = document.getElementById('newFilterKeyword').value.trim().toLowerCase();
+      const action = document.getElementById('newFilterAction').value;
+      const response = document.getElementById('newFilterResponse').value.trim();
+      if (!groupId) { showAlert('请先选择群组', 'error'); return; }
+      if (!keyword) { showAlert('请填写关键词', 'error'); return; }
+      if (action === 'reply' && !response) { showAlert('自动回复需要填写回复内容', 'error'); return; }
+      try {
+        const res = await fetch('/api/filters', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ group_id: Number(groupId), keyword, action, response }),
+        });
+        const result = await res.json();
+        showAlert(result.message || result.error || '完成', res.ok ? 'success' : 'error');
+        if (res.ok) {
+          document.getElementById('newFilterKeyword').value = '';
+          document.getElementById('newFilterResponse').value = '';
+          loadFilters();
+        }
+      } catch (err) {
+        showAlert('添加失败: ' + err.message, 'error');
+      }
+    }
+
+    async function deleteFilter(groupId, keyword) {
+      try {
+        const res = await fetch('/api/filters', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ group_id: Number(groupId), keyword }),
+        });
+        const result = await res.json();
+        showAlert(result.message || result.error || '完成', res.ok ? 'success' : 'error');
+        if (res.ok) loadFilters();
+      } catch (err) {
+        showAlert('删除失败: ' + err.message, 'error');
+      }
+    }
+
+    // Load filter groups on dashboard load
+    loadFilterGroups();
   </script>
 </body>
 </html>`;
@@ -495,6 +646,81 @@ export async function handleDashboard(request: Request, env: Env): Promise<Respo
     }
   }
   
+  // Groups list (for filter management)
+  if (url.pathname === '/api/groups') {
+    const cookie = request.headers.get('Cookie') || '';
+    if (!cookie.includes('auth=logged')) {
+      return new Response(JSON.stringify({ error: '未登录' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+    try {
+      if (!env.DB) {
+        return new Response(JSON.stringify({ error: 'D1 绑定 (DB) 未配置！', needInit: true }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+      const { results } = await env.DB.prepare(`SELECT id, title FROM groups ORDER BY title`).all();
+      return new Response(JSON.stringify(results || []), { headers: { 'Content-Type': 'application/json' } });
+    } catch (error: any) {
+      return new Response(JSON.stringify({ error: `查询失败: ${error?.message || error}`, needInit: true }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    }
+  }
+
+  // Filters management (违禁词/过滤器)
+  if (url.pathname === '/api/filters') {
+    const cookie = request.headers.get('Cookie') || '';
+    if (!cookie.includes('auth=logged')) {
+      return new Response(JSON.stringify({ error: '未登录' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (request.method === 'GET') {
+      const groupId = Number(url.searchParams.get('group_id'));
+      if (!groupId) {
+        return new Response(JSON.stringify({ error: '缺少 group_id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+      try {
+        const { results } = await env.DB.prepare(`
+          SELECT id, keyword, action, response FROM filters WHERE group_id = ? ORDER BY keyword
+        `).bind(groupId).all();
+        return new Response(JSON.stringify(results || []), { headers: { 'Content-Type': 'application/json' } });
+      } catch (error: any) {
+        return new Response(JSON.stringify({ error: `查询失败: ${error?.message || error}`, needInit: true }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
+    if (request.method === 'POST') {
+      try {
+        const body = await request.json() as { group_id?: number; keyword?: string; action?: string; response?: string };
+        const { group_id, keyword, action, response } = body;
+        if (!group_id || !keyword) {
+          return new Response(JSON.stringify({ error: '缺少群组或关键词' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+        const act = action === 'delete' ? 'delete' : 'reply';
+        const resp = act === 'delete' ? '' : (response || '');
+        await env.DB.prepare(`
+          INSERT INTO filters (group_id, keyword, response, action, created_by) VALUES (?, ?, ?, ?, ?)
+        `).bind(group_id, String(keyword).toLowerCase(), resp, act, 0).run();
+        return new Response(JSON.stringify({
+          message: act === 'delete' ? `✅ 已添加撤回违禁词 #${keyword}，命中后自动删除消息。` : `✅ 已添加自动回复 #${keyword}。`
+        }), { headers: { 'Content-Type': 'application/json' } });
+      } catch (error: any) {
+        return new Response(JSON.stringify({ error: `添加失败: ${error?.message || error}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
+    if (request.method === 'DELETE') {
+      try {
+        const body = await request.json() as { group_id?: number; keyword?: string };
+        const { group_id, keyword } = body;
+        if (!group_id || !keyword) {
+          return new Response(JSON.stringify({ error: '缺少群组或关键词' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+        }
+        await env.DB.prepare(`DELETE FROM filters WHERE group_id = ? AND keyword = ?`)
+          .bind(group_id, String(keyword).toLowerCase()).run();
+        return new Response(JSON.stringify({ message: `✅ 已删除 #${keyword}` }), { headers: { 'Content-Type': 'application/json' } });
+      } catch (error: any) {
+        return new Response(JSON.stringify({ error: `删除失败: ${error?.message || error}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+  }
+
   // Init database tables
   if (url.pathname === '/api/init-db') {
     const cookie = request.headers.get('Cookie') || '';
