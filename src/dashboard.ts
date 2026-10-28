@@ -187,48 +187,80 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
   <title>TG Bot 配置面板</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
-    .container { max-width: 900px; margin: 0 auto; }
-    .header { text-align: center; color: white; margin-bottom: 30px; }
-    .header h1 { font-size: 2.5em; margin-bottom: 10px; }
-    .header p { opacity: 0.9; font-size: 1.1em; }
-    .card { background: white; border-radius: 16px; padding: 30px; margin-bottom: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
-    .card h2 { color: #333; margin-bottom: 20px; font-size: 1.4em; display: flex; align-items: center; gap: 10px; }
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; }
-    .stat-item { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 20px; border-radius: 12px; text-align: center; }
-    .stat-value { font-size: 2em; font-weight: bold; }
-    .stat-label { font-size: 0.9em; opacity: 0.9; margin-top: 5px; }
-    .form-group { margin-bottom: 20px; }
-    .form-group label { display: block; margin-bottom: 8px; color: #555; font-weight: 500; }
-    .form-group input, .form-group textarea { width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 1em; transition: border-color 0.3s; }
-    .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #667eea; }
-    .form-group textarea { min-height: 100px; resize: vertical; }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-    .btn { background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 14px 32px; border-radius: 10px; font-size: 1em; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
-    .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4); }
-    .btn:active { transform: translateY(0); }
-    .btn-secondary { background: linear-gradient(135deg, #11998e, #38ef7d); }
-    .alert { padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; display: none; }
-    .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-    .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-    .section { margin-bottom: 30px; }
-    .section-title { color: #667eea; font-size: 1.1em; font-weight: 600; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #f0f0f0; }
-    .help-text { font-size: 0.85em; color: #888; margin-top: 5px; }
-    .login-container { max-width: 400px; margin: 100px auto; }
-    .logo { width: 80px; height: 80px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 20px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; font-size: 2.5em; }
-    .filter-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; }
-    .btn-small { background: #e74c3c; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85em; }
-    .btn-small:hover { background: #c0392b; }
-    .toggle-label { display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500; }
-    .toggle-label input[type="checkbox"] { width: 20px; height: 20px; accent-color: #667eea; }
-    @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif; background: #F0F2F5; min-height: 100vh; color: #333; }
+    .container { max-width: 960px; margin: 0 auto; padding: 24px 20px; }
+    
+    /* Header */
+    .header { background: linear-gradient(135deg, #0052D9 0%, #1677FF 100%); padding: 28px 32px; border-radius: 0 0 16px 16px; margin-bottom: 24px; box-shadow: 0 4px 16px rgba(0,82,217,0.15); }
+    .header h1 { font-size: 1.6em; color: #fff; font-weight: 600; letter-spacing: 0.5px; }
+    .header p { color: rgba(255,255,255,0.85); font-size: 0.9em; margin-top: 4px; }
+    
+    /* Cards */
+    .card { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04); border: 1px solid #E8E8E8; transition: box-shadow 0.2s; }
+    .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06); }
+    .card h2 { color: #1A1A1A; margin-bottom: 20px; font-size: 1.15em; font-weight: 600; display: flex; align-items: center; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid #F0F0F0; }
+    
+    /* Stats */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .stat-item { background: linear-gradient(135deg, #0052D9, #1677FF); color: #fff; padding: 18px 16px; border-radius: 8px; text-align: center; box-shadow: 0 2px 8px rgba(0,82,217,0.15); }
+    .stat-value { font-size: 1.8em; font-weight: 700; font-family: 'SF Mono', 'Monaco', monospace; }
+    .stat-label { font-size: 0.8em; opacity: 0.85; margin-top: 4px; }
+    
+    /* Forms */
+    .form-group { margin-bottom: 18px; }
+    .form-group label { display: block; margin-bottom: 6px; color: #555; font-weight: 500; font-size: 0.9em; }
+    .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px 14px; border: 1px solid #D9D9D9; border-radius: 6px; font-size: 0.9em; transition: all 0.2s; background: #FAFAFA; }
+    .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: #1677FF; background: #fff; box-shadow: 0 0 0 2px rgba(22,119,255,0.1); }
+    .form-group textarea { min-height: 80px; resize: vertical; font-family: 'SF Mono', 'Monaco', 'Consolas', monospace; font-size: 0.85em; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .form-row.two { grid-template-columns: 1fr 1fr; }
+    
+    /* Buttons */
+    .btn { background: #0052D9; color: #fff; border: none; padding: 10px 24px; border-radius: 6px; font-size: 0.9em; font-weight: 500; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn:hover { background: #003DA6; box-shadow: 0 2px 8px rgba(0,82,217,0.2); }
+    .btn:active { background: #002D80; transform: translateY(0); }
+    .btn-green { background: #00B578; }
+    .btn-green:hover { background: #009966; }
+    .btn-outline { background: #fff; color: #0052D9; border: 1px solid #0052D9; }
+    .btn-outline:hover { background: #E6F0FF; }
+    
+    /* Alerts */
+    .alert { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; display: none; font-size: 0.9em; }
+    .alert-success { background: #E8F5EE; color: #006633; border: 1px solid #B7EB8F; }
+    .alert-error { background: #FFF1F0; color: #CF1322; border: 1px solid #FFCCC7; }
+    
+    /* Section */
+    .section { margin-bottom: 24px; }
+    .section-title { color: #0052D9; font-size: 0.95em; font-weight: 600; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #E8E8E8; display: flex; align-items: center; gap: 6px; }
+    .help-text { font-size: 0.8em; color: #999; margin-top: 4px; line-height: 1.5; }
+    
+    /* Filter items */
+    .filter-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #FAFAFA; border-radius: 6px; margin-bottom: 6px; border: 1px solid #F0F0F0; font-size: 0.9em; }
+    .filter-item:hover { background: #F0F7FF; border-color: #BAE0FF; }
+    .btn-small { background: #FF4D4F; color: #fff; border: none; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8em; }
+    .btn-small:hover { background: #FF7875; }
+    
+    /* Toggle */
+    .toggle-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 500; font-size: 0.9em; }
+    .toggle-label input[type="checkbox"] { width: 18px; height: 18px; accent-color: #0052D9; }
+    
+    /* Login */
+    .login-container { max-width: 380px; margin: 80px auto; }
+    .login-box { background: #fff; border-radius: 16px; padding: 36px 32px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); border: 1px solid #E8E8E8; }
+    .logo { width: 64px; height: 64px; background: linear-gradient(135deg, #0052D9, #1677FF); border-radius: 16px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; font-size: 2em; box-shadow: 0 4px 12px rgba(0,82,217,0.25); }
+    .login-box h1 { text-align: center; color: #1A1A1A; margin-bottom: 24px; font-size: 1.2em; font-weight: 600; }
+    .login-box .btn { width: 100%; justify-content: center; padding: 12px; }
+    .error { color: #CF1322; text-align: center; margin-top: 12px; display: none; font-size: 0.85em; }
+    
+    /* Responsive */
+    @media (max-width: 768px) { .form-row { grid-template-columns: 1fr; } .form-row.two { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: repeat(2, 1fr); } .container { padding: 16px 12px; } }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>🤖 TG Bot 配置面板</h1>
-      <p>Telegram 群组管理机器人 - 可视化配置</p>
+      <h1>TG Bot 管理控制台</h1>
+      <p>Telegram Group Management System</p>
     </div>
     
     <div id="alert" class="alert"></div>
@@ -318,7 +350,7 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
         <label>Webhook URL</label>
         <input type="text" id="webhookUrl" readonly>
       </div>
-      <button class="btn btn-secondary" onclick="registerWebhook()">🚀 注册 Webhook</button>
+      <button class="btn btn-green" onclick="registerWebhook()">🚀 注册 Webhook</button>
       <div class="help-text" style="margin-top: 10px;">点击上方按钮自动设置 Telegram Webhook</div>
     </div>
 
@@ -347,7 +379,7 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
             </div>
           </div>
           <div class="help-text">在时间窗口内超过最大消息数，自动禁言对应时长</div>
-          <button class="btn btn-secondary" onclick="saveAntiflood()">💾 保存防刷设置</button>
+          <button class="btn btn-green" onclick="saveAntiflood()">💾 保存防刷设置</button>
         </div>
         <div class="section">
           <div class="section-title">🔐 进群审批</div>
@@ -406,7 +438,7 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
       <h2>🗄️ 数据库</h2>
       <div class="form-group">
         <label>D1 数据库初始化</label>
-        <button class="btn btn-secondary" onclick="initDb()">🗄️ 一键初始化数据库</button>
+        <button class="btn btn-outline" onclick="initDb()">🗄️ 一键初始化数据库</button>
         <div class="help-text" style="margin-top: 10px;">首次使用前必须执行。如果机器人提示 "no such table"，点这里即可自动建表（重复执行安全）。</div>
       </div>
     </div>
@@ -691,7 +723,7 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
       const groupId = document.getElementById('securityGroup').value;
       if (!groupId) { showAlert('请先选择群组', 'error'); return; }
       const status = document.getElementById('securityStatus');
-      status.innerHTML = '<p style="color:#667eea;">保存中...</p>';
+      status.innerHTML = '<p style="color:#0052D9;">保存中...</p>';
       try {
         const res = await fetch('/api/antiflood', {
           method: 'POST',
@@ -705,7 +737,7 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
         });
         const result = await res.json();
         showAlert(result.message || result.error || '完成', res.ok ? 'success' : 'error');
-        if (res.ok) status.innerHTML = '<p style="color:#27ae60;">✅ 已保存</p>';
+        if (res.ok) status.innerHTML = '<p style="color:#00B578;">✅ 已保存</p>';
       } catch (err) {
         showAlert('保存失败: ' + err.message, 'error');
       }
@@ -716,7 +748,7 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
       if (!groupId) { showAlert('请先选择群组', 'error'); return; }
       const enabled = document.getElementById('joinApprovalToggle').checked;
       const status = document.getElementById('securityStatus');
-      status.innerHTML = '<p style="color:#667eea;">保存中...</p>';
+      status.innerHTML = '<p style="color:#0052D9;">保存中...</p>';
       try {
         const res = await fetch('/api/groups/' + groupId + '/join-approval', {
           method: 'POST',
@@ -725,7 +757,7 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
         });
         const result = await res.json();
         showAlert(result.message || result.error || '完成', res.ok ? 'success' : 'error');
-        if (res.ok) status.innerHTML = '<p style="color:#27ae60;">✅ 已' + (enabled ? '启用' : '关闭') + '</p>';
+        if (res.ok) status.innerHTML = '<p style="color:#00B578;">✅ 已' + (enabled ? '启用' : '关闭') + '</p>';
       } catch (err) {
         showAlert('保存失败: ' + err.message, 'error');
       }
@@ -750,17 +782,17 @@ function getLoginHTML(): string {
   <title>登录 - TG Bot 配置面板</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .login-box { background: white; border-radius: 20px; padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.2); }
-    .logo { width: 80px; height: 80px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 20px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; font-size: 2.5em; }
-    h1 { text-align: center; color: #333; margin-bottom: 30px; }
-    .form-group { margin-bottom: 20px; }
-    .form-group label { display: block; margin-bottom: 8px; color: #555; font-weight: 500; }
-    .form-group input { width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 1em; transition: border-color 0.3s; }
-    .form-group input:focus { outline: none; border-color: #667eea; }
-    .btn { width: 100%; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 14px; border-radius: 10px; font-size: 1.1em; cursor: pointer; transition: transform 0.2s; }
-    .btn:hover { transform: translateY(-2px); }
-    .error { color: #e74c3c; text-align: center; margin-top: 15px; display: none; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif; background: #F0F2F5; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .login-box { background: #fff; border-radius: 16px; padding: 36px 32px; width: 100%; max-width: 380px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); border: 1px solid #E8E8E8; }
+    .logo { width: 64px; height: 64px; background: linear-gradient(135deg, #0052D9, #1677FF); border-radius: 16px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; font-size: 2em; box-shadow: 0 4px 12px rgba(0,82,217,0.25); }
+    .login-box h1 { text-align: center; color: #1A1A1A; margin-bottom: 24px; font-size: 1.2em; font-weight: 600; }
+    .form-group { margin-bottom: 18px; }
+    .form-group label { display: block; margin-bottom: 6px; color: #555; font-weight: 500; font-size: 0.9em; }
+    .form-group input { width: 100%; padding: 12px 14px; border: 1px solid #D9D9D9; border-radius: 6px; font-size: 0.9em; transition: all 0.2s; background: #FAFAFA; }
+    .form-group input:focus { outline: none; border-color: #1677FF; background: #fff; box-shadow: 0 0 0 2px rgba(22,119,255,0.1); }
+    .btn { width: 100%; background: #0052D9; color: #fff; border: none; padding: 12px; border-radius: 6px; font-size: 1em; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .btn:hover { background: #003DA6; box-shadow: 0 2px 8px rgba(0,82,217,0.2); }
+    .error { color: #CF1322; text-align: center; margin-top: 12px; display: none; font-size: 0.85em; }
   </style>
 </head>
 <body>
