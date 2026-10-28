@@ -323,6 +323,14 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
       </div>
     </div>
 
+    <!-- Group Management Card -->
+    <div class="card">
+      <h2>🗂️ 群组管理</h2>
+      <div id="groupList">
+        <p style="color:#888;">加载中...</p>
+      </div>
+    </div>
+
     <!-- Database Card -->
     <div class="card">
       <h2>🗄️ 数据库</h2>
@@ -509,7 +517,56 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
       }
     }
 
-    // Load filter groups on dashboard load
+    // === Group management ===
+    async function loadAdminGroups() {
+      const list = document.getElementById('groupList');
+      try {
+        const res = await fetch('/api/groups');
+        if (!res.ok) {
+          list.innerHTML = '<p style="color:#e74c3c;">加载失败</p>';
+          return;
+        }
+        const groups = await res.json();
+        if (!groups || groups.length === 0) {
+          list.innerHTML = '<p style="color:#888;">📭 暂无已接入的群组</p>';
+          return;
+        }
+        list.innerHTML = '<div style="font-weight:600;color:#555;margin-bottom:10px;">已接入群组 (' + groups.length + ')</div>' +
+          groups.map(function(g) {
+            return '<div class="filter-item">' +
+              '<span>' + escapeHtml(g.title) + ' <code style="color:#888;font-size:0.85em;">' + g.id + '</code></span>' +
+              '<button class="btn-small" data-del-group="' + g.id + '">删除</button>' +
+              '</div>';
+          }).join('');
+        list.querySelectorAll('[data-del-group]').forEach(function(btn) {
+          btn.onclick = function() { deleteGroup(Number(btn.dataset.delGroup)); };
+        });
+      } catch (err) {
+        list.innerHTML = '<p style="color:#e74c3c;">加载失败: ' + escapeHtml(err.message) + '</p>';
+      }
+    }
+
+    async function deleteGroup(groupId) {
+      if (!confirm('确定删除该群组？相关数据（笔记、违禁词、锁定等）也会被清除。')) return;
+      try {
+        const res = await fetch('/api/groups', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ group_id: groupId }),
+        });
+        const result = await res.json();
+        showAlert(result.message || result.error || '完成', res.ok ? 'success' : 'error');
+        if (res.ok) {
+          loadAdminGroups();
+          loadFilterGroups();
+        }
+      } catch (err) {
+        showAlert('删除失败: ' + err.message, 'error');
+      }
+    }
+
+    // Load on dashboard load
+    loadAdminGroups();
     loadFilterGroups();
   </script>
 </body>
@@ -660,6 +717,32 @@ export async function handleDashboard(request: Request, env: Env): Promise<Respo
       return new Response(JSON.stringify(results || []), { headers: { 'Content-Type': 'application/json' } });
     } catch (error: any) {
       return new Response(JSON.stringify({ error: `查询失败: ${error?.message || error}`, needInit: true }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    }
+  }
+
+  // Delete group
+  if (url.pathname === '/api/groups' && request.method === 'DELETE') {
+    const cookie = request.headers.get('Cookie') || '';
+    if (!cookie.includes('auth=logged')) {
+      return new Response(JSON.stringify({ error: '未登录' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+    try {
+      const { group_id } = (await request.json()) as { group_id?: number };
+      if (!group_id) {
+        return new Response(JSON.stringify({ error: '缺少 group_id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+      await env.DB.prepare(`DELETE FROM group_members WHERE group_id = ?`).bind(group_id).run();
+      await env.DB.prepare(`DELETE FROM notes WHERE group_id = ?`).bind(group_id).run();
+      await env.DB.prepare(`DELETE FROM filters WHERE group_id = ?`).bind(group_id).run();
+      await env.DB.prepare(`DELETE FROM group_locks WHERE group_id = ?`).bind(group_id).run();
+      await env.DB.prepare(`DELETE FROM scheduled_announcements WHERE group_id = ?`).bind(group_id).run();
+      await env.DB.prepare(`DELETE FROM warnings WHERE group_id = ?`).bind(group_id).run();
+      await env.DB.prepare(`DELETE FROM action_logs WHERE group_id = ?`).bind(group_id).run();
+      await env.DB.prepare(`DELETE FROM invite_links WHERE group_id = ?`).bind(group_id).run();
+      await env.DB.prepare(`DELETE FROM groups WHERE id = ?`).bind(group_id).run();
+      return new Response(JSON.stringify({ message: '群组已删除' }), { headers: { 'Content-Type': 'application/json' } });
+    } catch (error: any) {
+      return new Response(JSON.stringify({ error: '删除失败: ' + (error?.message || error) }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
   }
 
