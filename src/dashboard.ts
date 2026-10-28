@@ -12,6 +12,8 @@ interface BotConfig {
   bot_username: string;
   admin_ids: string;
   welcome_message: string;
+  welcome_media: string;
+  welcome_buttons: string;
   group_rules: string;
   announcement_footer: string;
 }
@@ -21,6 +23,8 @@ const defaultConfig: BotConfig = {
   bot_username: '',
   admin_ids: '',
   welcome_message: '欢迎 {first_name} 加入 {group_name}！',
+  welcome_media: '',
+  welcome_buttons: '',
   group_rules: '暂无群规',
   announcement_footer: '\n\n— 管理员',
 };
@@ -35,7 +39,10 @@ CREATE TABLE IF NOT EXISTS groups (
     invite_link TEXT,
     language TEXT DEFAULT 'zh',
     welcome_message TEXT,
+    welcome_media TEXT,
+    welcome_buttons TEXT,
     rules TEXT,
+    join_approval INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -87,6 +94,10 @@ CREATE TABLE IF NOT EXISTS filters (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ALTER TABLE filters ADD COLUMN action TEXT DEFAULT 'reply';
+ALTER TABLE groups ADD COLUMN welcome_media TEXT;
+ALTER TABLE groups ADD COLUMN welcome_buttons TEXT;
+ALTER TABLE groups ADD COLUMN join_approval INTEGER DEFAULT 0;
+ALTER TABLE antiflood_settings ADD COLUMN mute_duration INTEGER DEFAULT 300;
 CREATE TABLE IF NOT EXISTS group_locks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     group_id INTEGER NOT NULL,
@@ -152,6 +163,12 @@ CREATE TABLE IF NOT EXISTS antiflood_settings (
     time_window INTEGER DEFAULT 10,
     action TEXT DEFAULT 'mute'
 );
+CREATE TABLE IF NOT EXISTS verified_users (
+    group_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    verified_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (group_id, user_id)
+);
 CREATE INDEX IF NOT EXISTS idx_warnings_group ON warnings(group_id);
 CREATE INDEX IF NOT EXISTS idx_notes_group_keyword ON notes(group_id, keyword);
 CREATE INDEX IF NOT EXISTS idx_filters_group ON filters(group_id);
@@ -202,6 +219,8 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
     .filter-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; }
     .btn-small { background: #e74c3c; color: white; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85em; }
     .btn-small:hover { background: #c0392b; }
+    .toggle-label { display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500; }
+    .toggle-label input[type="checkbox"] { width: 20px; height: 20px; accent-color: #667eea; }
     @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: repeat(2, 1fr); } }
   </style>
 </head>
@@ -269,6 +288,16 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
             <div class="help-text">可用变量: {first_name} = 用户名, {group_name} = 群名称</div>
           </div>
           <div class="form-group">
+            <label>欢迎图片 (file_id)</label>
+            <input type="text" id="welcome_media" value="${config.welcome_media}" placeholder="发送图片到机器人获取 file_id">
+            <div class="help-text">可选：发送一张图片给机器人，回复中的 file_id 填到这里，欢迎消息将带图片发送</div>
+          </div>
+          <div class="form-group">
+            <label>欢迎按钮 (JSON)</label>
+            <textarea id="welcome_buttons" placeholder='[{"text":"📜 查看群规","callback_data":"show_rules"},{"text":"✅ 我已阅读","callback_data":"acknowledge"}]'>${config.welcome_buttons}</textarea>
+            <div class="help-text">可选：JSON 数组格式，每个按钮含 text 和 callback_data。显示在欢迎消息下方的内嵌按钮</div>
+          </div>
+          <div class="form-group">
             <label>群规</label>
             <textarea id="group_rules" placeholder="请输入群规内容">${config.group_rules}</textarea>
           </div>
@@ -291,6 +320,47 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
       </div>
       <button class="btn btn-secondary" onclick="registerWebhook()">🚀 注册 Webhook</button>
       <div class="help-text" style="margin-top: 10px;">点击上方按钮自动设置 Telegram Webhook</div>
+    </div>
+
+    <!-- Security Settings Card -->
+    <div class="card">
+      <h2>🛡️ 安全设置</h2>
+      <div id="securityGroupSelect" style="margin-bottom: 15px;">
+        <label>选择群组</label>
+        <select id="securityGroup" onchange="loadSecuritySettings()"></select>
+      </div>
+      <div id="securitySettings" style="display:none;">
+        <div class="section">
+          <div class="section-title">🚦 防刷消息 (Anti-Flood)</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>时间窗口 (秒)</label>
+              <input type="number" id="floodTimeWindow" value="10" min="1" max="60">
+            </div>
+            <div class="form-group">
+              <label>最大消息数</label>
+              <input type="number" id="floodMaxMessages" value="5" min="1" max="50">
+            </div>
+            <div class="form-group">
+              <label>禁言时长 (秒)</label>
+              <input type="number" id="floodMuteDuration" value="300" min="10" max="86400">
+            </div>
+          </div>
+          <div class="help-text">在时间窗口内超过最大消息数，自动禁言对应时长</div>
+          <button class="btn btn-secondary" onclick="saveAntiflood()">💾 保存防刷设置</button>
+        </div>
+        <div class="section">
+          <div class="section-title">🔐 进群审批</div>
+          <div class="form-group">
+            <label class="toggle-label">
+              <input type="checkbox" id="joinApprovalToggle" onchange="toggleJoinApproval()">
+              <span>启用进群审批</span>
+            </label>
+            <div class="help-text">启用后，新成员需点击按钮验证后才能发言，直到验证通过将被禁言</div>
+          </div>
+        </div>
+        <div id="securityStatus" style="margin-top:10px;"></div>
+      </div>
     </div>
 
     <!-- Filters Card -->
@@ -363,6 +433,8 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
         bot_username: document.getElementById('bot_username').value,
         admin_ids: document.getElementById('admin_ids').value,
         welcome_message: document.getElementById('welcome_message').value,
+        welcome_media: document.getElementById('welcome_media').value,
+        welcome_buttons: document.getElementById('welcome_buttons').value,
         group_rules: document.getElementById('group_rules').value,
         announcement_footer: document.getElementById('announcement_footer').value,
       };
@@ -565,7 +637,102 @@ function getDashboardHTML(config: BotConfig, stats: any): string {
       }
     }
 
+    // === Security settings ===
+    async function loadSecurityGroups() {
+      try {
+        const res = await fetch('/api/groups');
+        if (!res.ok) return;
+        const groups = await res.json();
+        const select = document.getElementById('securityGroup');
+        select.innerHTML = '';
+        if (!groups || groups.length === 0) {
+          select.innerHTML = '<option value="">暂无群组</option>';
+          document.getElementById('securitySettings').style.display = 'none';
+          return;
+        }
+        groups.forEach(function(g) {
+          const opt = document.createElement('option');
+          opt.value = g.id;
+          opt.textContent = g.title;
+          select.appendChild(opt);
+        });
+        document.getElementById('securitySettings').style.display = 'block';
+        loadSecuritySettings();
+      } catch (err) {
+        console.error('Load security groups failed:', err);
+      }
+    }
+
+    async function loadSecuritySettings() {
+      const groupId = document.getElementById('securityGroup').value;
+      if (!groupId) { document.getElementById('securitySettings').style.display = 'none'; return; }
+      document.getElementById('securitySettings').style.display = 'block';
+      // Load antiflood settings
+      try {
+        const res = await fetch('/api/antiflood?group_id=' + groupId);
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('floodTimeWindow').value = data.time_window || 10;
+          document.getElementById('floodMaxMessages').value = data.max_messages || 5;
+          document.getElementById('floodMuteDuration').value = data.mute_duration || 300;
+        }
+      } catch (e) { /* ignore */ }
+      // Load join approval
+      try {
+        const res = await fetch('/api/groups/' + groupId + '/join-approval');
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('joinApprovalToggle').checked = !!data.enabled;
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    async function saveAntiflood() {
+      const groupId = document.getElementById('securityGroup').value;
+      if (!groupId) { showAlert('请先选择群组', 'error'); return; }
+      const status = document.getElementById('securityStatus');
+      status.innerHTML = '<p style="color:#667eea;">保存中...</p>';
+      try {
+        const res = await fetch('/api/antiflood', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            group_id: Number(groupId),
+            time_window: Number(document.getElementById('floodTimeWindow').value),
+            max_messages: Number(document.getElementById('floodMaxMessages').value),
+            mute_duration: Number(document.getElementById('floodMuteDuration').value),
+          }),
+        });
+        const result = await res.json();
+        showAlert(result.message || result.error || '完成', res.ok ? 'success' : 'error');
+        if (res.ok) status.innerHTML = '<p style="color:#27ae60;">✅ 已保存</p>';
+      } catch (err) {
+        showAlert('保存失败: ' + err.message, 'error');
+      }
+    }
+
+    async function toggleJoinApproval() {
+      const groupId = document.getElementById('securityGroup').value;
+      if (!groupId) { showAlert('请先选择群组', 'error'); return; }
+      const enabled = document.getElementById('joinApprovalToggle').checked;
+      const status = document.getElementById('securityStatus');
+      status.innerHTML = '<p style="color:#667eea;">保存中...</p>';
+      try {
+        const res = await fetch('/api/groups/' + groupId + '/join-approval', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: enabled }),
+        });
+        const result = await res.json();
+        showAlert(result.message || result.error || '完成', res.ok ? 'success' : 'error');
+        if (res.ok) status.innerHTML = '<p style="color:#27ae60;">✅ 已' + (enabled ? '启用' : '关闭') + '</p>';
+      } catch (err) {
+        showAlert('保存失败: ' + err.message, 'error');
+      }
+    }
+
     // Load on dashboard load
+    loadSecurityGroups();
     loadAdminGroups();
     loadFilterGroups();
   </script>
@@ -801,6 +968,49 @@ export async function handleDashboard(request: Request, env: Env): Promise<Respo
       } catch (error: any) {
         return new Response(JSON.stringify({ error: `删除失败: ${error?.message || error}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
       }
+    }
+  }
+
+  // Anti-flood settings
+  if (url.pathname === '/api/antiflood') {
+    const cookie = request.headers.get('Cookie') || '';
+    if (!cookie.includes('auth=logged')) {
+      return new Response(JSON.stringify({ error: '未登录' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (request.method === 'GET') {
+      const groupId = Number(url.searchParams.get('group_id'));
+      if (!groupId) return new Response(JSON.stringify({ error: '缺少 group_id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      const settings = await env.DB.prepare(
+        'SELECT time_window, max_messages, mute_duration FROM antiflood_settings WHERE group_id = ?'
+      ).bind(groupId).first<{ time_window: number; max_messages: number; mute_duration: number }>();
+      return new Response(JSON.stringify(settings || { time_window: 10, max_messages: 5, mute_duration: 300 }), { headers: { 'Content-Type': 'application/json' } });
+    }
+    if (request.method === 'POST') {
+      const { group_id, time_window, max_messages, mute_duration } = (await request.json()) as { group_id?: number; time_window?: number; max_messages?: number; mute_duration?: number };
+      if (!group_id) return new Response(JSON.stringify({ error: '缺少 group_id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      await env.DB.prepare(
+        'INSERT OR REPLACE INTO antiflood_settings (group_id, time_window, max_messages, mute_duration) VALUES (?, ?, ?, ?)'
+      ).bind(group_id, time_window || 10, max_messages || 5, mute_duration || 300).run();
+      return new Response(JSON.stringify({ message: '防刷设置已保存' }), { headers: { 'Content-Type': 'application/json' } });
+    }
+  }
+
+  // Join approval toggle
+  if (url.pathname.startsWith('/api/groups/') && url.pathname.endsWith('/join-approval')) {
+    const cookie = request.headers.get('Cookie') || '';
+    if (!cookie.includes('auth=logged')) {
+      return new Response(JSON.stringify({ error: '未登录' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
+    const groupId = Number(url.pathname.split('/')[2]);
+    if (!groupId) return new Response(JSON.stringify({ error: '缺少 group_id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    if (request.method === 'GET') {
+      const group = await env.DB.prepare('SELECT join_approval FROM groups WHERE id = ?').bind(groupId).first<{ join_approval: number }>();
+      return new Response(JSON.stringify({ enabled: !!group?.join_approval }), { headers: { 'Content-Type': 'application/json' } });
+    }
+    if (request.method === 'POST') {
+      const { enabled } = (await request.json()) as { enabled?: boolean };
+      await env.DB.prepare('UPDATE groups SET join_approval = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(enabled ? 1 : 0, groupId).run();
+      return new Response(JSON.stringify({ message: '进群审批已' + (enabled ? '启用' : '关闭') }), { headers: { 'Content-Type': 'application/json' } });
     }
   }
 
